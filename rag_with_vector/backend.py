@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
-import numpy as np
 
 # Import from retrieval and document_ingest modules
 from retrieval import embed_query, retrieve
