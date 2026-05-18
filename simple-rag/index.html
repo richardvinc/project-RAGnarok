@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG System Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .embedding-preview {
+        font-family: "Courier New", monospace;
+        font-size: 0.75rem;
+        max-height: 100px;
+        overflow-y: auto;
+      }
+      .expandable-section {
+        transition: max-height 0.3s ease-in-out;
+      }
+      .collapsed {
+        max-height: 0;
+        overflow: hidden;
+      }
+      .expanded {
+        max-height: 2000px;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50">
+    <div class="min-h-screen p-4 md:p-8">
+      <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div
+          class="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-8 rounded-lg shadow-lg mb-8"
+        >
+          <h1 class="text-4xl font-bold mb-2">🔍 RAG System Inspector</h1>
+          <p class="text-blue-100">
+            Learn how RAG works by inspecting every step
+          </p>
+        </div>
+
+        <!-- Query Input Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 class="text-2xl font-bold text-gray-800 mb-4">📝 Query Input</h2>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              id="queryInput"
+              placeholder="Ask a question..."
+              value="explain what is founder mode"
+              class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onclick="runRAG()"
+              class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
+            >
+              Search
+            </button>
+          </div>
+          <div id="loadingSpinner" class="hidden mt-4 flex items-center gap-2">
+            <div
+              class="animate-spin h-5 w-5 bg-blue-600 rounded-full border-4 border-gray-300"
+            ></div>
+            <span class="text-gray-600">Processing...</span>
+          </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="resultsContainer" class="space-y-6">
+          <!-- Query Embedding Section -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <button
+              onclick="toggleSection('queryEmbedding')"
+              class="w-full px-6 py-4 bg-gray-100 hover:bg-gray-200 flex justify-between items-center font-semibold text-gray-800 transition"
+            >
+              <span>📊 Query Embedding (768 dims)</span>
+              <span id="queryEmbeddingToggle" class="text-gray-500">▼</span>
+            </button>
+            <div id="queryEmbedding" class="expandable-section collapsed">
+              <div class="p-6 bg-gradient-to-b from-gray-50 to-white">
+                <div
+                  class="embedding-preview p-4 bg-gray-900 text-green-400 rounded-lg border border-gray-700"
+                >
+                  <div id="queryEmbeddingContent">Loading...</div>
+                </div>
+                <p class="text-sm text-gray-500 mt-3">
+                  This is the vector representation of your query. Each
+                  dimension captures different semantic aspects.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Retrieved Chunks Section -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <button
+              onclick="toggleSection('retrievedChunks')"
+              class="w-full px-6 py-4 bg-gray-100 hover:bg-gray-200 flex justify-between items-center font-semibold text-gray-800 transition"
+            >
+              <span>📚 Retrieved Chunks (Top 5)</span>
+              <span id="retrievedChunksToggle" class="text-gray-500">▼</span>
+            </button>
+            <div id="retrievedChunks" class="expandable-section collapsed">
+              <div class="p-6 space-y-4">
+                <div id="chunksContent">Loading...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Final Prompt Section -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <button
+              onclick="toggleSection('finalPrompt')"
+              class="w-full px-6 py-4 bg-gray-100 hover:bg-gray-200 flex justify-between items-center font-semibold text-gray-800 transition"
+            >
+              <span>💬 Final Prompt Sent to LLM</span>
+              <span id="finalPromptToggle" class="text-gray-500">▼</span>
+            </button>
+            <div id="finalPrompt" class="expandable-section collapsed">
+              <div class="p-6">
+                <div
+                  id="finalPromptContent"
+                  class="bg-gray-100 p-4 rounded-lg border border-gray-300 font-mono text-sm whitespace-pre-wrap"
+                >
+                  Loading...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- LLM Response Section -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <button
+              onclick="toggleSection('llmResponse')"
+              class="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 flex justify-between items-center font-semibold text-white transition"
+            >
+              <span>✨ LLM Response</span>
+              <span id="llmResponseToggle" class="text-white">▼</span>
+            </button>
+            <div id="llmResponse" class="expandable-section collapsed">
+              <div class="p-6 bg-gradient-to-b from-white to-gray-50">
+                <div
+                  id="llmResponseContent"
+                  class="text-gray-800 leading-relaxed"
+                >
+                  Loading...
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_URL = "http://localhost:8000";
+
+      function toggleSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        const toggle = document.getElementById(sectionId + "Toggle");
+
+        section.classList.toggle("collapsed");
+        section.classList.toggle("expanded");
+        toggle.textContent = section.classList.contains("collapsed")
+          ? "▼"
+          : "▲";
+      }
+
+      async function runRAG() {
+        const query = document.getElementById("queryInput").value.trim();
+        if (!query) {
+          alert("Please enter a query");
+          return;
+        }
+
+        const spinner = document.getElementById("loadingSpinner");
+        spinner.classList.remove("hidden");
+
+        try {
+          const response = await fetch(`${API_URL}/rag`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, k: 5 }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to get response from server");
+          }
+
+          const data = await response.json();
+          displayResults(data);
+        } catch (error) {
+          alert("Error: " + error.message);
+          console.error(error);
+        } finally {
+          spinner.classList.add("hidden");
+        }
+      }
+
+      function displayResults(data) {
+        // Query Embedding
+        const embeddingPreview =
+          data.query_embedding
+            .slice(0, 20)
+            .map((v) => v.toFixed(4))
+            .join(", ") + " ...";
+        document.getElementById("queryEmbeddingContent").textContent =
+          `[${embeddingPreview}]`;
+
+        // Retrieved Chunks
+        const chunksHtml = data.retrieved_chunks
+          .map(
+            (chunk, idx) => `
+                <div class="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-semibold text-gray-800">Chunk ${idx + 1}</span>
+                        <span class="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded">
+                            Similarity: ${(chunk.similarity * 100).toFixed(1)}%
+                        </span>
+                    </div>
+                    <p class="text-gray-700 mb-3 leading-relaxed">${chunk.text}</p>
+                    <button 
+                        onclick="toggleEmbedding('emb${idx}')" 
+                        class="text-blue-600 hover:text-blue-800 text-sm font-semibold"
+                    >
+                        ▼ Show Embedding
+                    </button>
+                    <div id="emb${idx}" class="hidden mt-2 p-3 bg-gray-900 text-green-400 rounded text-xs font-mono max-h-20 overflow-y-auto">
+                        [${chunk.embedding
+                          .slice(0, 10)
+                          .map((v) => v.toFixed(4))
+                          .join(", ")}...]
+                    </div>
+                </div>
+            `,
+          )
+          .join("");
+        document.getElementById("chunksContent").innerHTML = chunksHtml;
+
+        // Final Prompt
+        document.getElementById("finalPromptContent").textContent =
+          data.final_prompt;
+
+        // LLM Response
+        document.getElementById("llmResponseContent").textContent =
+          data.llm_response;
+
+        // Expand LLM Response by default
+        const llmSection = document.getElementById("llmResponse");
+        if (llmSection.classList.contains("collapsed")) {
+          toggleSection("llmResponse");
+        }
+      }
+
+      function toggleEmbedding(embId) {
+        const element = document.getElementById(embId);
+        element.classList.toggle("hidden");
+      }
+    </script>
+  </body>
+</html>

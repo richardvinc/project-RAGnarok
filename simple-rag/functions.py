@@ -1,10 +1,9 @@
 from openai import OpenAI
-import os
 import numpy as np
 import lmstudio as lms
 
-if not os.environ.get("OPENAI_API_KEY"):
-    raise RuntimeError("Missing OPENAI_API_KEY. Set it in your environment first.")
+client = OpenAI(base_url="http://localhost:1234/v1", api_key="test")
+EMBED_MODEL = "text-embedding-google_embeddinggemma-300m-qat"
 
 corpus_of_documents = [
     "At a YC event, Brian Chesky gave a memorable talk where he challenged conventional wisdom about running large companies. As Airbnb grew, he received advice to 'hire good people and give them room' which proved disastrous, leading him to develop his own management approach inspired by Steve Jobs.",
@@ -30,33 +29,22 @@ corpus_of_documents = [
 ]
 
 
-embedding_model = lms.embedding_model("text-embedding-bert-base-uncased")
+embedding_model = lms.embedding_model(EMBED_MODEL)
 
-def embedder(chunk: str) -> np.ndarray:
-    """
-    Embed one document chunk using LM Studio.
-    """
-    results = embedding_model.embed(
-        f"search_document: {chunk}"
-    )
-
+def embed_document(chunk: str) -> np.ndarray:
+    results = embedding_model.embed(f"search_document: {chunk}")
     return np.array(results, dtype=np.float32)
 
-embedded_data_source = []
-
-for chunk in corpus_of_documents:
-    #embed the chunk
-    embedding = embedder(chunk)
-
-    #map the embedding to the chunk
-    embedded_data_source.append((embedding, chunk))
+def embed_query(query: str) -> np.ndarray:
+    results = embedding_model.embed(f"search_query: {query}")
+    return np.array(results, dtype=np.float32)
 
 def search(query, data_source, k=5):
     """
     Search function to find top k similar chunks to the query
     """
     # Compute embedding for the query
-    query_embedding = embedder(query)
+    query_embedding = embed_query(query)
 
     # Normalize the query embedding
     query_norm = np.linalg.norm(query_embedding)
@@ -79,20 +67,24 @@ def search(query, data_source, k=5):
 
     return top_k
 
-user_query = "explain what is founder mode"
-top_k_chunks = search(user_query, embedded_data_source, k=5)
 
+# Main execution
+if __name__ == "__main__":
+    # Pre-embed documents
+    embedded_data_source = []
+    for chunk in corpus_of_documents:
+        embedding = embed_document(chunk)
+        embedded_data_source.append((embedding, chunk))
 
-# for similarity, chunk in top_k_chunks:
-#     print(f"Similarity: {similarity:.4f}, Chunk: {chunk}")
+    # Search
+    user_query = "explain what is founder mode"
+    top_k_chunks = search(user_query, embedded_data_source, k=5)
 
-retrieved_chunks = []
+    # Extract chunks
+    retrieved_chunks = [chunk for similarity, chunk in top_k_chunks]
 
-#extract the chunks's text only from the top_k_chunks
-for similarity, chunk in top_k_chunks:
-    retrieved_chunks.append(chunk)
-
-base_prompt = """You are an AI assistant for RAG. Your task is to understand the user question, and provide an answer using the provided contexts.
+    # Build prompt
+    base_prompt = """You are an AI assistant for RAG. Your task is to understand the user question, and provide an answer using the provided contexts.
 
 Your answers are correct, high-quality, and written by an domain expert. If the provided context does not contain the answer, simply state, "The provided context does not have the answer."
 
@@ -102,18 +94,17 @@ Contexts:
 {chunks_information}
 """
 
-#formatting the prompt
-prompt = base_prompt.format(user_query=user_query, chunks_information="\n".join([chunk for chunk in retrieved_chunks]))
+    prompt = base_prompt.format(user_query=user_query, chunks_information="\n".join(retrieved_chunks))
 
-print("\n\nPROMPT: ", prompt)
+    print("\n\nPROMPT: ", prompt)
 
-client = OpenAI(base_url="http://localhost:1234/v1")
-response = client.chat.completions.create(
-    model="google/gemma-4-e4b",
-    temperature=0,
-    messages=[
-        {"role": "user", "content": prompt},
-    ],
-)
+    # Get LLM response
+    response = client.chat.completions.create(
+        model="google/gemma-4-e4b",
+        temperature=0,
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+    )
 
-print("\n\nANSWER: ", response.choices[0].message.content)
+    print("\n\nANSWER: ", response.choices[0].message.content)
