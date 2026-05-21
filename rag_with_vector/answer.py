@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+from pathlib import Path
+from typing import TypedDict
 
 from openai import OpenAI
 from retrieval import retrieve
@@ -10,6 +12,12 @@ load_dotenv()
 
 MODEL_NAME="google/gemma-4-e4b"
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="test")
+PUBLIC_BACKEND_URL = "http://127.0.0.1:8000"
+
+
+class AnswerResult(TypedDict):
+    response: str
+    image_url: str | None
 
 SYSTEM_PROMPT = """You are a helpful assistant and a good story teller. Answer the user's question using ONLY the provided context.
 
@@ -51,7 +59,12 @@ def format_context(chunks: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def answer(question: str, *, chunks: list[dict]) -> str:
+def _to_public_image_url(saved_image_path: str) -> str:
+    normalized_path = Path(saved_image_path).as_posix().lstrip("./")
+    return f"{PUBLIC_BACKEND_URL}/{normalized_path}"
+
+
+def answer(question: str, *, chunks: list[dict]) -> AnswerResult:
     user_content = f"Question:\n{question}\n\nContext:\n{format_context(chunks)}"
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -63,9 +76,10 @@ def answer(question: str, *, chunks: list[dict]) -> str:
         messages=messages, # type: ignore
         tools=tools # type: ignore
     )
-    response_message = resp.choices[0].message or ""
+    response_message = resp.choices[0].message
+    generated_image_url: str | None = None
 
-    if response_message.tool_calls:
+    if response_message and response_message.tool_calls:
         print("Triggered tool call")
         
         # Append Gemma's tool request to history as required by the chat model protocol
@@ -83,6 +97,7 @@ def answer(question: str, *, chunks: list[dict]) -> str:
                 
                 # Execute your local diffusers script function
                 saved_image_path = generate_story_image(target_prompt)
+                generated_image_url = _to_public_image_url(saved_image_path)
                 
                 # Package tool response for the LLM
                 tool_response_content = json.dumps({
@@ -106,10 +121,16 @@ def answer(question: str, *, chunks: list[dict]) -> str:
             messages=messages, # type: ignore
             temperature=0
         )
-        return final_response.choices[0].message.content or ""
+        return {
+            "response": final_response.choices[0].message.content or "",
+            "image_url": generated_image_url,
+        }
     
     # If no tool calls were requested, simply return the text answer
-    return response_message.content or ""
+    return {
+        "response": response_message.content if response_message else "", # type: ignore
+        "image_url": None,
+    }
 
 
 def main():

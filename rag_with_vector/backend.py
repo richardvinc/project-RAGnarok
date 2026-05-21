@@ -2,20 +2,26 @@
 FastAPI backend for RAG with Vector database system
 Run: uvicorn backend:app --reload
 """
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
 
 # Import from retrieval and document_ingest modules
 from retrieval import embed_query, retrieve
-from answer import format_context, SYSTEM_PROMPT
+from answer import answer as generate_answer, format_context, SYSTEM_PROMPT
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = FastAPI()
+
+Path("images_generated").mkdir(exist_ok=True)
+app.mount("/images_generated", StaticFiles(directory="images_generated"), name="images_generated")
 
 # Enable CORS
 app.add_middleware(
@@ -46,6 +52,7 @@ class RAGResponse(BaseModel):
     formatted_context: str
     final_prompt: str
     llm_response: str
+    image_url: str | None = None
 
 @app.post("/rag", response_model=RAGResponse)
 async def rag_endpoint(request: QueryRequest):
@@ -78,17 +85,9 @@ async def rag_endpoint(request: QueryRequest):
     
     final_prompt = f"SYSTEM: {SYSTEM_PROMPT}\n\nUSER: {user_content}"
     
-    # Step 6: Get LLM response
-    response = client.chat.completions.create(
-        model="google/gemma-4-e4b",
-        temperature=0,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-    )
-    
-    llm_response = response.choices[0].message.content or ""
+    # Step 6: Get LLM response and optional generated image
+    answer_result = generate_answer(query, chunks=retrieved_chunks_raw)
+    llm_response = answer_result["response"]
     
     return RAGResponse(
         query=query,
@@ -96,7 +95,8 @@ async def rag_endpoint(request: QueryRequest):
         retrieved_chunks=chunks_info,
         formatted_context=formatted_context,
         final_prompt=final_prompt,
-        llm_response=llm_response
+        llm_response=llm_response,
+        image_url=answer_result["image_url"],
     )
 
 @app.get("/health")

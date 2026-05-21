@@ -1,6 +1,6 @@
 # RAG with Vector Database Inspector
 
-Full-stack RAG system using PostgreSQL + pgvector for semantic search with vector embeddings. Inspect every step of the RAG pipeline.
+Full-stack RAG system using PostgreSQL + pgvector for semantic search with vector embeddings. The UI is now a simple Next.js app inside `rag_with_vector`, and it proxies requests to the FastAPI backend in `backend.py`.
 
 ## Prerequisites
 
@@ -35,15 +35,20 @@ uvicorn backend:app --reload
 
 Backend will be at: `http://127.0.0.1:8000`
 
-### 3. Open Frontend
-
-Open `index.html` in browser or serve:
+### 3. Start Frontend
 
 ```bash
-python -m http.server 8080
+npm install
+npm run dev
 ```
 
-Then go to: `http://localhost:8080`
+Next.js will be at: `http://localhost:3000`
+
+The UI calls `/api/rag`, which forwards to `backend.py`.
+
+### 4. Open Frontend
+
+Open `http://localhost:3000`
 
 ## Architecture
 
@@ -64,7 +69,8 @@ Show all steps in Inspector UI
 ## Files
 
 - `backend.py` - FastAPI server, imports functions from retrieval.py and main.py
-- `index.html` - Interactive inspector UI (Tailwind + Vanilla JS)
+- `app/page.jsx` - Next.js UI for the inspector
+- `app/api/rag/route.js` - Proxy route to `backend.py`
 - `retrieval.py` - Vector search functions (exported)
 - `main.py` - LLM response formatting (exported)
 - `document_ingest.py` - Document ingestion script

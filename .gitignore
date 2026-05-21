@@ -11,4 +11,6 @@ wheels/
 .env
 documents/*
 documents_backup/*
-rag_with_vector/images_generated/*
+**/images_generated
+**/node_modules
+**/.next
