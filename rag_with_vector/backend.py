@@ -11,6 +11,10 @@ from openai import OpenAI
 from retrieval import embed_query, retrieve
 from answer import format_context, SYSTEM_PROMPT
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = FastAPI()
 
 # Enable CORS

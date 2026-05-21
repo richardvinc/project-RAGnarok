@@ -4,6 +4,10 @@ import os
 import psycopg
 from openai import OpenAI
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="test")
 EMBED_MODEL = "text-embedding-3-small"
 
@@ -18,7 +22,10 @@ def embed_query(q: str) -> list[float]:
 
 
 def retrieve(q: str, *, k: int = 8) -> list[dict]:
-    db_url = os.environ["DATABASE_URL"]
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise Exception("DATABASE_URL is not defined")
+    
     q_vec = embed_query(q)
 
     with psycopg.connect(db_url) as conn:

@@ -9,6 +9,9 @@ from pathlib import Path
 import psycopg
 import tiktoken
 import lmstudio as lms
+from dotenv import load_dotenv
+
+load_dotenv()
 
 EMBED_MODEL = "text-embedding-google_embeddinggemma-300m-qat"
 ENCODING_NAME = "cl100k_base"
@@ -99,7 +102,10 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 def ingest_directory(directory: Path) -> None:
-    db_url = os.environ["DATABASE_URL"]
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise Exception("DATABASE_URL is not defined")
+    
     files = sorted([p for p in directory.glob("*") if p.suffix.lower() in {".md", ".txt"}])
 
     if not files:
