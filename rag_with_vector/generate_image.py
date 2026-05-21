@@ -1,50 +1,60 @@
+import os
+import random
+import string
 import torch
 from typing import Any
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
-def run_official_sdxl():
-    print("🔄 Step 1: Loading official StabilityAI SDXL Base 1.0 (FP16)...")
+MODEL_NAME = "stabilityai/stable-diffusion-xl-base-1.0"
+
+def generate_story_image(prompt: str) -> str:
+    """
+    Generates an image based on a descriptive story prompt and saves it locally.
     
-    # 1. We load the pipeline standard configuration structure
+    Args:
+        prompt (str): Detailed visual description generated from the story context.
+        
+    Returns:
+        str: File path to the saved PNG image.
+    """
+    print(f"Processing for prompt: '{prompt[:60]}...'")
+    
+    # Ensure the output directory exists
+    os.makedirs("images_generated", exist_ok=True)
+
+    # Load pipeline with FP16 variants
     raw_pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", 
+        MODEL_NAME, 
         torch_dtype=torch.float16, 
         variant="fp16",
         use_safetensors=True
     )
-    
-    # 2. FIX: Cast the object to 'Any' type to shut down strict linter errors.
-    # This prevents Pyright/Pylance from claiming it isn't callable.
     pipe: Any = raw_pipe
-
-    print("🚀 Step 2: Offloading execution onto your RTX 3060...")
-    pipe.to("cuda")
-
-    prompt = (
-        "A gorgeous classic book illustration of Mowgli and Bagheera the panther "
-        "sitting together on a massive mossy tree branch, sunbeams breaking through "
-        "the dense jungle foliage, oil painting style"
-    )
-    negative_prompt = "low quality, blurry, modern clothing, sunglasses, text, watermark"
     
-    print("🎨 Step 3: Running text-to-image diffusion passes across CUDA...")
-    # The linter can now cleanly track the dynamic attributes without throwing errors
+    # This offloads sub-modules to CPU when not active, saving massive VRAM
+    pipe.enable_model_cpu_offload() 
+    
+    # Reduces memory overhead during the attention mechanism layer calculation
+    if hasattr(pipe, "enable_attention_slicing"):
+        pipe.enable_attention_slicing()
+
+    # Append stylistic guardrails to match children's book aesthetic
+    styled_prompt = f"{prompt}, in the style of a beautiful children's storybook illustration, rich colors, highly detailed"
+    negative_prompt = "low quality, blurry, photo, realistic, modern clothing, modern items, text, watermark, mutated"
+    
+    # Run Inference
     output = pipe(
-        prompt=prompt,
+        prompt=styled_prompt,
         negative_prompt=negative_prompt,
-        num_inference_steps=30,
-        guidance_scale=7.5
+        num_inference_steps=25,
+        guidance_scale=7.0
     )
     
-    # Extract and save your final asset image file
+    # Save and export the asset
     image = output.images[0]
-    output_filename = "sdxl_base_jungle.png"
+    random_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    output_filename = f"images_generated/{random_id}.png"
     image.save(output_filename)
     
-    print(f"\n🎉 Success! Image generated locally and saved to: '{output_filename}'")
-
-if __name__ == "__main__":
-    try:
-        run_official_sdxl()
-    except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
+    print(f"🎉 Asset generated successfully at: {output_filename}")
+    return output_filename
