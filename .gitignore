@@ -14,3 +14,4 @@ documents_backup/*
 **/images_generated
 **/node_modules
 **/.next
+.run_dev.lock

@@ -250,6 +250,7 @@ a {
 }
 
 .summary-card,
+.history-card,
 .decision-card {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -268,6 +269,23 @@ a {
 .decision-list {
   display: grid;
   gap: 12px;
+}
+
+.history-list,
+.turn-group {
+  display: grid;
+  gap: 12px;
+}
+
+.turn-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.turn-title {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .decision-header {

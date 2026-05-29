@@ -5,13 +5,16 @@ import { useMemo, useState } from "react";
 const DEFAULT_QUERY =
   "Generate me an image of Mowgli, show me the source data used and translate it to indonesian";
 
+const CITATION_REGEX = /\[source:\s*([^#]+)#chunk:([0-9,\s]+)\]/g;
+
 function splitResponse(text, onCitationClick) {
   const parts = [];
-  const citationRegex = /\[source:\s*([^#]+)#chunk:([0-9,\s]+)\]/g;
   let lastIndex = 0;
   let match;
 
-  while ((match = citationRegex.exec(text)) !== null) {
+  CITATION_REGEX.lastIndex = 0;
+
+  while ((match = CITATION_REGEX.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(
         <span key={`text-${lastIndex}`}>
@@ -44,7 +47,7 @@ function splitResponse(text, onCitationClick) {
       </span>,
     );
 
-    lastIndex = citationRegex.lastIndex;
+    lastIndex = CITATION_REGEX.lastIndex;
   }
 
   if (lastIndex < text.length) {
@@ -52,6 +55,14 @@ function splitResponse(text, onCitationClick) {
   }
 
   return parts;
+}
+
+function hasCitations(text) {
+  if (!text) {
+    return false;
+  }
+  CITATION_REGEX.lastIndex = 0;
+  return CITATION_REGEX.test(text);
 }
 
 function getImageSource(data) {
@@ -86,67 +97,119 @@ function Section({ title, open, onToggle, children }) {
   );
 }
 
-function DecisionLogSection({ decisionLog, runSummary, open, onToggle }) {
+function DecisionLogSection({ decisionLogHistory, open, onToggle }) {
   return (
     <Section title="Decision Log" open={open} onToggle={onToggle}>
       <div className="stack">
-        <div className="summary-grid">
-          <div className="summary-card">
-            <span className="summary-label">Used Tools</span>
-            <strong>{runSummary?.used_tools ? "Yes" : "No"}</strong>
-          </div>
-          <div className="summary-card">
-            <span className="summary-label">Tool Names</span>
-            <strong>
-              {runSummary?.tool_names?.length
-                ? runSummary.tool_names.join(", ")
-                : "None"}
-            </strong>
-          </div>
-          <div className="summary-card">
-            <span className="summary-label">Total Steps</span>
-            <strong>{runSummary?.total_steps ?? 0}</strong>
-          </div>
-        </div>
-
-        <div className="decision-list">
-          {decisionLog?.map((event, index) => (
-            <article className="decision-card" key={`${event.step}-${index}`}>
-              <div className="decision-header">
+        {decisionLogHistory.length ? (
+          decisionLogHistory.map((turn) => (
+            <section className="turn-group" key={`turn-${turn.turnIndex}`}>
+              <div className="turn-header">
                 <div>
-                  <div className="decision-eyebrow">
-                    Step {index + 1} • {event.stage}
-                  </div>
-                  <h3 className="decision-title">{event.step}</h3>
-                </div>
-                <div className={`decision-status status-${event.status}`}>
-                  {event.status}
+                  <div className="decision-eyebrow">Turn {turn.turnIndex}</div>
+                  <h3 className="turn-title">{turn.query}</h3>
                 </div>
               </div>
 
-              <p className="decision-text">{event.decision}</p>
-
-              <div className="decision-meta">
-                <span>{new Date(event.timestamp).toLocaleString()}</span>
-                {event.tool_name ? <span>Tool: {event.tool_name}</span> : null}
+              <div className="summary-grid">
+                <div className="summary-card">
+                  <span className="summary-label">Used Tools</span>
+                  <strong>{turn.runSummary?.used_tools ? "Yes" : "No"}</strong>
+                </div>
+                <div className="summary-card">
+                  <span className="summary-label">Tool Names</span>
+                  <strong>
+                    {turn.runSummary?.tool_names?.length
+                      ? turn.runSummary.tool_names.join(", ")
+                      : "None"}
+                  </strong>
+                </div>
+                <div className="summary-card">
+                  <span className="summary-label">Total Steps</span>
+                  <strong>{turn.runSummary?.total_steps ?? 0}</strong>
+                </div>
               </div>
 
-              {Object.keys(event.details || {}).length ? (
-                <details className="decision-details">
-                  <summary>View details</summary>
-                  <div className="decision-detail-grid">
-                    {Object.entries(event.details).map(([key, value]) => (
-                      <div className="decision-detail" key={key}>
-                        <strong>{key}</strong>
-                        <pre>{formatDecisionValue(value)}</pre>
+              <div className="decision-list">
+                {turn.decisionLog?.map((event, index) => (
+                  <article
+                    className="decision-card"
+                    key={`${turn.turnIndex}-${event.step}-${index}`}
+                  >
+                    <div className="decision-header">
+                      <div>
+                        <div className="decision-eyebrow">
+                          Step {index + 1} • {event.stage}
+                        </div>
+                        <h3 className="decision-title">{event.step}</h3>
                       </div>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-            </article>
-          ))}
+                      <div className={`decision-status status-${event.status}`}>
+                        {event.status}
+                      </div>
+                    </div>
+
+                    <p className="decision-text">{event.decision}</p>
+
+                    <div className="decision-meta">
+                      <span>{new Date(event.timestamp).toLocaleString()}</span>
+                      {event.tool_name ? (
+                        <span>Tool: {event.tool_name}</span>
+                      ) : null}
+                    </div>
+
+                    {Object.keys(event.details || {}).length ? (
+                      <details className="decision-details">
+                        <summary>View details</summary>
+                        <div className="decision-detail-grid">
+                          {Object.entries(event.details).map(([key, value]) => (
+                            <div className="decision-detail" key={key}>
+                              <strong>{key}</strong>
+                              <pre>{formatDecisionValue(value)}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
+          <p className="hint">
+            Decision logs will appear after the first query.
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function HistoryStateSection({ history, previousTurnContext, open, onToggle }) {
+  return (
+    <Section title="History State" open={open} onToggle={onToggle}>
+      <div className="stack">
+        <div className="history-list">
+          {history.length ? (
+            history.map((turn, index) => (
+              <article className="history-card" key={`history-${index}`}>
+                <div className="decision-eyebrow">
+                  {turn.role} #{index + 1}
+                </div>
+                <div>{turn.content}</div>
+              </article>
+            ))
+          ) : (
+            <p className="hint">No history yet.</p>
+          )}
         </div>
+
+        {/* <details className="panel-nested">
+          <summary>Previous Turn Context</summary>
+          <div className="mono-box">
+            {JSON.stringify(previousTurnContext, null, 2)}
+          </div>
+        </details> */}
       </div>
     </Section>
   );
@@ -160,10 +223,12 @@ export default function HomePage() {
   const [data, setData] = useState(null);
   const [history, setHistory] = useState([]);
   const [previousTurnContext, setPreviousTurnContext] = useState(null);
+  const [decisionLogHistory, setDecisionLogHistory] = useState([]);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
   const [openSections, setOpenSections] = useState({
     image: false,
     decisionLog: true,
+    historyState: false,
     chunks: false,
     context: false,
     prompt: false,
@@ -214,15 +279,17 @@ export default function HomePage() {
       }
 
       const result = await response.json();
+      const citationSafeResponse = hasCitations(result.translated_llm_response)
+        ? result.translated_llm_response
+        : result.llm_response;
       const assistantContent =
-        result.translated_llm_response ?? result.llm_response ?? "";
-      setData(result);
-      setHistory((current) => [
-        ...current,
+        citationSafeResponse ?? result.llm_response ?? "";
+      const nextHistory = [
+        ...history,
         { role: "user", content: trimmedQuery },
         { role: "assistant", content: assistantContent },
-      ]);
-      setPreviousTurnContext({
+      ];
+      const nextPreviousTurnContext = {
         assistant_response: assistantContent,
         cited_chunks: (result.cited_chunk_ids ?? [])
           .map((chunkId) =>
@@ -235,13 +302,25 @@ export default function HomePage() {
             section_path: chunk.section_path,
             content: chunk.content,
           })),
-      });
+      };
+      const nextDecisionLogEntry = {
+        turnIndex: Math.floor(nextHistory.length / 2),
+        query: trimmedQuery,
+        decisionLog: result.decision_log ?? [],
+        runSummary: result.run_summary ?? null,
+      };
+
+      setData(result);
+      setHistory(nextHistory);
+      setPreviousTurnContext(nextPreviousTurnContext);
+      setDecisionLogHistory((current) => [...current, nextDecisionLogEntry]);
       setSelectedChunkId(
         result.cited_chunk_ids?.[0] ?? result.retrieved_chunks?.[0]?.id ?? null,
       );
       setOpenSections({
         image: Boolean(getImageSource(result)),
         decisionLog: true,
+        historyState: true,
         chunks: true,
         context: true,
         prompt: true,
@@ -263,8 +342,9 @@ export default function HomePage() {
     ? translatedChunkMap.get(selectedChunk.id)
     : null;
   const imageSource = getImageSource(data);
-  const displayResponse =
-    data?.translated_llm_response ?? data?.llm_response ?? "";
+  const interactiveResponse = hasCitations(data?.translated_llm_response)
+    ? data?.translated_llm_response
+    : (data?.llm_response ?? "");
   const showOriginalResponse =
     data?.translated_llm_response &&
     data?.translated_llm_response !== data?.llm_response;
@@ -311,6 +391,13 @@ export default function HomePage() {
           {error ? <div className="error">{error}</div> : null}
         </form>
 
+        <HistoryStateSection
+          history={history}
+          previousTurnContext={previousTurnContext}
+          open={openSections.historyState}
+          onToggle={() => toggleSection("historyState")}
+        />
+
         {data ? (
           <>
             <Section
@@ -339,7 +426,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="response mono-box">
-                  {splitResponse(displayResponse, setSelectedChunkId)}
+                  {splitResponse(interactiveResponse, setSelectedChunkId)}
                 </div>
 
                 {showOriginalResponse ? (
@@ -422,48 +509,10 @@ export default function HomePage() {
             ) : null}
 
             <DecisionLogSection
-              decisionLog={data.decision_log}
-              runSummary={data.run_summary}
+              decisionLogHistory={decisionLogHistory}
               open={openSections.decisionLog}
               onToggle={() => toggleSection("decisionLog")}
             />
-
-            {/* <Section
-              title="Retrieved Chunks"
-              open={openSections.chunks}
-              onToggle={() => toggleSection("chunks")}
-            >
-              <div className="chunk-grid">
-                {data.retrieved_chunks.map((chunk, index) => {
-                  const translatedChunk = translatedChunkMap.get(chunk.id);
-                  return (
-                    <article className="chunk-card" key={chunk.id}>
-                      <div>
-                        <strong>Chunk {index + 1}</strong>{" "}
-                        <span className="badge">ID {chunk.id}</span>
-                      </div>
-                      <div className="chunk-meta">
-                        <div>
-                          <strong>Source:</strong> {chunk.source}
-                        </div>
-                        {chunk.section_path ? (
-                          <div>
-                            <strong>Section:</strong> {chunk.section_path}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="content-box">{chunk.content}</div>
-                      {translatedChunk ? (
-                        <div className="content-box translated-box">
-                          <strong>{translatedChunk.target_language}:</strong>{" "}
-                          {translatedChunk.translated_content}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            </Section> */}
 
             <Section
               title="Formatted Context"
