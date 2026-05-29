@@ -18,6 +18,16 @@ Rules:
 - If the context does not contain the answer, say: "I don't know based on the provided context."
 - Do not use outside knowledge.
 - Cite sources in this exact format: `[source: {source}#chunk:{chunk_id}]`
+- If the user asks to visualize, illustrate, or generate an image, you may call the available image tool.
+"""
+
+POST_TOOL_SYSTEM_PROMPT = """You have tool results available.
+
+Rules:
+- If the image generation tool succeeded, clearly tell the user the image was generated.
+- Do not answer with "I don't know based on the provided context." when the user's image request was fulfilled by the tool.
+- If the retrieved context supports factual details, you may include them with citations.
+- If the context does not support extra factual claims, keep the reply limited to confirming the generated image and any non-factual tool result details.
 """
 
 
@@ -208,9 +218,13 @@ def generate_grounded_response(
 
     if first_message.tool_calls:
         image_url, messages, used_tool_names = _execute_requested_tools(first_message, messages, logger)
+        final_messages = [
+            *messages,
+            ChatMessagePayload(role="system", content=POST_TOOL_SYSTEM_PROMPT).model_dump(),
+        ]
         final_response = client.chat.completions.create(
             model=settings.llm_model,
-            messages=messages,  # type: ignore[arg-type]
+            messages=final_messages,  # type: ignore[arg-type]
             temperature=0,
         )
         final_message = final_response.choices[0].message.content or ""
