@@ -10,6 +10,7 @@ class RetrievedChunk(BaseModel):
     source: str
     section_path: str
     content: str
+    translated_content: str | None = None
 
 
 class ChunkDraft(BaseModel):
@@ -31,11 +32,33 @@ class GenerateStoryImageArgs(BaseModel):
     prompt: str = Field(min_length=1)
 
 
+class TranslateExcerptItem(BaseModel):
+    chunk_id: int
+    text: str = Field(min_length=1)
+    source: str
+    section_path: str
+
+
+class TranslateExcerptArgs(BaseModel):
+    target_language: str = Field(min_length=1)
+    excerpts: list[TranslateExcerptItem] = Field(min_length=1)
+
+
+class TranslatedChunkResult(BaseModel):
+    chunk_id: int
+    target_language: str
+    translated_content: str
+    source: str
+    section_path: str
+
+
 class ToolExecutionPayload(BaseModel):
     status: str
     message: str
     saved_at: str | None = None
     image_url: str | None = None
+    target_language: str | None = None
+    translations: list[TranslatedChunkResult] | None = None
 
 
 class ToolExecutionResult(BaseModel):
@@ -46,6 +69,7 @@ class ToolExecutionResult(BaseModel):
     parsed_arguments: dict[str, Any]
     tool_response: ToolExecutionPayload
     image_url: str | None = None
+    translated_chunks: list[TranslatedChunkResult] = Field(default_factory=list)
 
 
 class SerializedToolFunction(BaseModel):

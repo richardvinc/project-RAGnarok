@@ -346,6 +346,34 @@ a {
   font: 0.88rem/1.5 Consolas, "SFMono-Regular", Menlo, monospace;
 }
 
+.panel-nested {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: #fffdf7;
+}
+
+.panel-nested summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.translated-block {
+  display: grid;
+  gap: 10px;
+}
+
+.translated-box {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.badge-secondary {
+  background: #dcfce7;
+  color: var(--success);
+}
+
 .tip {
   border-left: 4px solid var(--accent);
   background: #eef2ff;

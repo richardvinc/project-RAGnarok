@@ -71,6 +71,12 @@ class Settings(BaseSettings):
         default="cl100k_base",
         validation_alias=AliasChoices("TOKEN_ENCODING_NAME", "token_encoding_name"),
     )
+    max_tool_rounds: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        validation_alias=AliasChoices("MAX_TOOL_ROUNDS", "max_tool_rounds"),
+    )
     frontend_dir: Path = root_dir / "apps" / "web"
 
     @property

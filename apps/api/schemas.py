@@ -5,12 +5,31 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from .config import settings
-from .domain.models import RetrievedChunk
+from .domain.models import RetrievedChunk, TranslatedChunkResult
 
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1)
     k: int = Field(default=settings.default_retrieval_k, ge=1, le=20)
+    history: list["ConversationTurn"] = Field(default_factory=list)
+    previous_turn_context: "PreviousTurnContext | None" = None
+
+
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1)
+
+
+class PreviousTurnChunk(BaseModel):
+    chunk_id: int
+    source: str
+    section_path: str
+    content: str = Field(min_length=1)
+
+
+class PreviousTurnContext(BaseModel):
+    assistant_response: str = Field(min_length=1)
+    cited_chunks: list[PreviousTurnChunk] = Field(default_factory=list)
 
 
 class ChunkResult(RetrievedChunk):
@@ -40,6 +59,10 @@ class RAGResponse(BaseModel):
     formatted_context: str
     final_prompt: str
     llm_response: str
+    llm_response_language: str
+    translated_llm_response: str | None = None
     image_url: str | None = None
+    translated_chunks: list[TranslatedChunkResult] = Field(default_factory=list)
+    cited_chunk_ids: list[int] = Field(default_factory=list)
     decision_log: list[DecisionEvent]
     run_summary: RunSummary

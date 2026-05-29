@@ -28,7 +28,12 @@ app.add_middleware(
 
 @app.post("/rag", response_model=RAGResponse)
 async def rag_endpoint(request: QueryRequest) -> RAGResponse:
-    return run_rag_pipeline(request.query, k=request.k)
+    return run_rag_pipeline(
+        request.query,
+        k=request.k,
+        history=request.history,
+        previous_turn_context=request.previous_turn_context,
+    )
 
 
 @app.get("/health")

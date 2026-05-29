@@ -80,6 +80,15 @@ def retrieve_chunks(query: str, *, k: int) -> tuple[list[float], list[RetrievedC
     return query_embedding, chunks
 
 
+def build_history_aware_search_query(query: str, history: list[str]) -> str:
+    recent_history = [item.strip() for item in history if item.strip()][-6:]
+    if not recent_history:
+        return query
+
+    history_block = "\n".join(recent_history)
+    return f"Conversation history:\n{history_block}\n\nCurrent user request:\n{query}"
+
+
 def chunk_by_tokens(text: str) -> list[str]:
     encoding = tiktoken.get_encoding(settings.token_encoding_name)
     tokens = encoding.encode(text)

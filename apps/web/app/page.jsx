@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-const DEFAULT_QUERY = "who is mowgli's enemy in the story?";
+const DEFAULT_QUERY =
+  "Generate me an image of Mowgli, show me the source data used and translate it to indonesian";
 
 function splitResponse(text, onCitationClick) {
   const parts = [];
@@ -157,16 +158,25 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [previousTurnContext, setPreviousTurnContext] = useState(null);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
   const [openSections, setOpenSections] = useState({
     image: false,
     decisionLog: true,
-    embedding: false,
     chunks: false,
     context: false,
     prompt: false,
     response: true,
   });
+
+  const translatedChunkMap = useMemo(() => {
+    const map = new Map();
+    for (const chunk of data?.translated_chunks ?? []) {
+      map.set(chunk.chunk_id, chunk);
+    }
+    return map;
+  }, [data]);
 
   const toggleSection = (key) => {
     setOpenSections((current) => ({
@@ -191,7 +201,12 @@ export default function HomePage() {
       const response = await fetch("/api/rag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmedQuery, k }),
+        body: JSON.stringify({
+          query: trimmedQuery,
+          k,
+          history,
+          previous_turn_context: previousTurnContext,
+        }),
       });
 
       if (!response.ok) {
@@ -199,17 +214,34 @@ export default function HomePage() {
       }
 
       const result = await response.json();
+      const assistantContent =
+        result.translated_llm_response ?? result.llm_response ?? "";
       setData(result);
-      setSelectedChunkId(result.retrieved_chunks?.[0]?.id ?? null);
+      setHistory((current) => [
+        ...current,
+        { role: "user", content: trimmedQuery },
+        { role: "assistant", content: assistantContent },
+      ]);
+      setPreviousTurnContext({
+        assistant_response: assistantContent,
+        cited_chunks: (result.cited_chunk_ids ?? [])
+          .map((chunkId) =>
+            result.retrieved_chunks?.find((chunk) => chunk.id === chunkId),
+          )
+          .filter(Boolean)
+          .map((chunk) => ({
+            chunk_id: chunk.id,
+            source: chunk.source,
+            section_path: chunk.section_path,
+            content: chunk.content,
+          })),
+      });
+      setSelectedChunkId(
+        result.cited_chunk_ids?.[0] ?? result.retrieved_chunks?.[0]?.id ?? null,
+      );
       setOpenSections({
-        image: Boolean(
-          result.image_url ??
-          result.generated_image_url ??
-          result.image_path ??
-          result.generated_image_path,
-        ),
+        image: Boolean(getImageSource(result)),
         decisionLog: true,
-        embedding: true,
         chunks: true,
         context: true,
         prompt: true,
@@ -227,7 +259,15 @@ export default function HomePage() {
     data?.retrieved_chunks?.[0] ??
     null;
 
+  const translatedSelectedChunk = selectedChunk
+    ? translatedChunkMap.get(selectedChunk.id)
+    : null;
   const imageSource = getImageSource(data);
+  const displayResponse =
+    data?.translated_llm_response ?? data?.llm_response ?? "";
+  const showOriginalResponse =
+    data?.translated_llm_response &&
+    data?.translated_llm_response !== data?.llm_response;
 
   return (
     <main className="page">
@@ -235,9 +275,8 @@ export default function HomePage() {
         <header className="hero">
           <h1>Project RAGnarok</h1>
           <p>
-            A grounded RAG demo over The Jungle Book with structured LLM
-            decision logging, tool tracing, and a frontend inspector for every
-            execution step.
+            Grounded RAG over The Jungle Book with structured decision logging,
+            multi-tool chaining, and translated cited sources.
           </p>
         </header>
 
@@ -279,25 +318,68 @@ export default function HomePage() {
               open={openSections.response}
               onToggle={() => toggleSection("response")}
             >
-              <div className="response mono-box">
-                {splitResponse(data.llm_response, setSelectedChunkId)}
+              <div className="stack">
+                <div className="summary-grid">
+                  <div className="summary-card">
+                    <span className="summary-label">Answer Language</span>
+                    <strong>{data.llm_response_language}</strong>
+                  </div>
+                  <div className="summary-card">
+                    <span className="summary-label">Cited Chunks</span>
+                    <strong>
+                      {data.cited_chunk_ids?.length
+                        ? data.cited_chunk_ids.join(", ")
+                        : "None"}
+                    </strong>
+                  </div>
+                  <div className="summary-card">
+                    <span className="summary-label">Translated Sources</span>
+                    <strong>{data.translated_chunks?.length ?? 0}</strong>
+                  </div>
+                </div>
+
+                <div className="response mono-box">
+                  {splitResponse(displayResponse, setSelectedChunkId)}
+                </div>
+
+                {showOriginalResponse ? (
+                  <details className="panel-nested">
+                    <summary>Show original response</summary>
+                    <div className="mono-box">
+                      {splitResponse(data.llm_response, setSelectedChunkId)}
+                    </div>
+                  </details>
+                ) : null}
               </div>
             </Section>
 
             <section className="detail-card">
               <h2 className="detail-title">Source Detail</h2>
               {selectedChunk ? (
-                <div>
-                  <div className="badge">Chunk ID {selectedChunk.id}</div>
-                  <p className="source-meta">
-                    <strong>Source:</strong> {selectedChunk.source}
-                  </p>
-                  {selectedChunk.section_path ? (
+                <div className="stack">
+                  <div>
+                    <div className="badge">Chunk ID {selectedChunk.id}</div>
                     <p className="source-meta">
-                      <strong>Section:</strong> {selectedChunk.section_path}
+                      <strong>Source:</strong> {selectedChunk.source}
                     </p>
+                    {selectedChunk.section_path ? (
+                      <p className="source-meta">
+                        <strong>Section:</strong> {selectedChunk.section_path}
+                      </p>
+                    ) : null}
+                    <div className="content-box">{selectedChunk.content}</div>
+                  </div>
+
+                  {translatedSelectedChunk ? (
+                    <div className="translated-block">
+                      <div className="badge badge-secondary">
+                        {translatedSelectedChunk.target_language}
+                      </div>
+                      <div className="content-box translated-box">
+                        {translatedSelectedChunk.translated_content}
+                      </div>
+                    </div>
                   ) : null}
-                  <div className="content-box">{selectedChunk.content}</div>
                 </div>
               ) : (
                 <p className="hint">
@@ -347,47 +429,41 @@ export default function HomePage() {
             />
 
             {/* <Section
-              title="Query Embedding"
-              open={openSections.embedding}
-              onToggle={() => toggleSection("embedding")}
-            >
-              <div className="mono-box embedding-box">
-                [
-                {data.query_embedding
-                  .slice(0, 20)
-                  .map((value) => value.toFixed(4))
-                  .join(", ")}{" "}
-                ...]
-              </div>
-            </Section> */}
-
-            <Section
               title="Retrieved Chunks"
               open={openSections.chunks}
               onToggle={() => toggleSection("chunks")}
             >
               <div className="chunk-grid">
-                {data.retrieved_chunks.map((chunk, index) => (
-                  <article className="chunk-card" key={chunk.id}>
-                    <div>
-                      <strong>Chunk {index + 1}</strong>{" "}
-                      <span className="badge">ID {chunk.id}</span>
-                    </div>
-                    <div className="chunk-meta">
+                {data.retrieved_chunks.map((chunk, index) => {
+                  const translatedChunk = translatedChunkMap.get(chunk.id);
+                  return (
+                    <article className="chunk-card" key={chunk.id}>
                       <div>
-                        <strong>Source:</strong> {chunk.source}
+                        <strong>Chunk {index + 1}</strong>{" "}
+                        <span className="badge">ID {chunk.id}</span>
                       </div>
-                      {chunk.section_path ? (
+                      <div className="chunk-meta">
                         <div>
-                          <strong>Section:</strong> {chunk.section_path}
+                          <strong>Source:</strong> {chunk.source}
+                        </div>
+                        {chunk.section_path ? (
+                          <div>
+                            <strong>Section:</strong> {chunk.section_path}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="content-box">{chunk.content}</div>
+                      {translatedChunk ? (
+                        <div className="content-box translated-box">
+                          <strong>{translatedChunk.target_language}:</strong>{" "}
+                          {translatedChunk.translated_content}
                         </div>
                       ) : null}
-                    </div>
-                    <div className="content-box">{chunk.content}</div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
-            </Section>
+            </Section> */}
 
             <Section
               title="Formatted Context"

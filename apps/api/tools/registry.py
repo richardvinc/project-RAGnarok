@@ -4,8 +4,13 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from openai import OpenAI
+
+from ..config import settings
 from ..domain.models import (
     GenerateStoryImageArgs,
+    TranslatedChunkResult,
+    TranslateExcerptArgs,
     ToolExecutionPayload,
     ToolExecutionResult,
     ToolSchemaDefinition,
@@ -36,6 +41,37 @@ def build_tool_schemas() -> list[dict[str, Any]]:
                     "required": ["prompt"],
                 },
             },
+        ).model_dump(),
+        ToolSchemaDefinition(
+            function={
+                "name": "translate_excerpt",
+                "description": (
+                    "Translate cited source excerpts into target language while preserving meaning exactly."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_language": {
+                            "type": "string",
+                            "description": "Target language name such as Indonesian.",
+                        },
+                        "excerpts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "chunk_id": {"type": "integer"},
+                                    "text": {"type": "string"},
+                                    "source": {"type": "string"},
+                                    "section_path": {"type": "string"},
+                                },
+                                "required": ["chunk_id", "text", "source", "section_path"],
+                            },
+                        },
+                    },
+                    "required": ["target_language", "excerpts"],
+                },
+            },
         ).model_dump()
     ]
 
@@ -59,8 +95,84 @@ def _generate_story_image(arguments: dict[str, Any]) -> ToolExecutionResult:
     )
 
 
+def _extract_json_object(raw_text: str) -> dict[str, Any]:
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        return json.loads(raw_text[start : end + 1])
+
+
+def _translate_excerpt(arguments: dict[str, Any]) -> ToolExecutionResult:
+    parsed_arguments = TranslateExcerptArgs.model_validate(arguments)
+    client = OpenAI(
+        base_url=settings.lm_studio_base_url,
+        api_key=settings.llm_api_key,
+    )
+
+    translation_prompt = json.dumps(
+        {
+            "target_language": parsed_arguments.target_language,
+            "excerpts": [excerpt.model_dump() for excerpt in parsed_arguments.excerpts],
+        },
+        ensure_ascii=False,
+    )
+    response = client.chat.completions.create(
+        model=settings.llm_model,
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a translation tool. Translate each excerpt into the target language only. "
+                    "Preserve meaning. Do not summarize. Return valid JSON with keys "
+                    "`target_language` and `translations`. Each translation item must contain "
+                    "`chunk_id`, `translated_content`, `source`, and `section_path`."
+                ),
+            },
+            {
+                "role": "user",
+                "content": translation_prompt,
+            },
+        ],
+    )
+    raw_content = response.choices[0].message.content or "{}"
+    parsed_response = _extract_json_object(raw_content)
+    translated_chunks = [
+        TranslatedChunkResult.model_validate(
+            {
+                "chunk_id": item["chunk_id"],
+                "target_language": parsed_response.get(
+                    "target_language",
+                    parsed_arguments.target_language,
+                ),
+                "translated_content": item["translated_content"],
+                "source": item["source"],
+                "section_path": item["section_path"],
+            }
+        )
+        for item in parsed_response.get("translations", [])
+    ]
+    return ToolExecutionResult(
+        tool_name="translate_excerpt",
+        arguments=parsed_arguments.model_dump(),
+        parsed_arguments=parsed_arguments.model_dump(),
+        tool_response=ToolExecutionPayload(
+            status="success",
+            message="Excerpts translated successfully.",
+            target_language=parsed_arguments.target_language,
+            translations=translated_chunks,
+        ),
+        translated_chunks=translated_chunks,
+    )
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], ToolExecutionResult]] = {
     "generate_story_image": _generate_story_image,
+    "translate_excerpt": _translate_excerpt,
 }
 
 
