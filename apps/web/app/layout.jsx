@@ -1,9 +1,9 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Project The Jungle Book",
+  title: "Project RAGnarok",
   description:
-    "Implementation of LLM, RAG, and image generation by utilizing The Jungle Book from Gutenberg Project",
+    "RAG inspector with structured LLM decision logging and tool execution tracing.",
 };
 
 export default function RootLayout({ children }) {

@@ -4,17 +4,6 @@ import { useState } from "react";
 
 const DEFAULT_QUERY = "who is mowgli's enemy in the story?";
 
-function groupChunksBySource(chunks) {
-  return chunks.reduce((groups, chunk, index) => {
-    const key = chunk.source || "Unknown source";
-    if (!groups[key]) {
-      groups[key] = [];
-    }
-    groups[key].push({ ...chunk, order: index + 1 });
-    return groups;
-  }, {});
-}
-
 function splitResponse(text, onCitationClick) {
   const parts = [];
   const citationRegex = /\[source:\s*([^#]+)#chunk:([0-9,\s]+)\]/g;
@@ -74,6 +63,14 @@ function getImageSource(data) {
   );
 }
 
+function formatDecisionValue(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
 function Section({ title, open, onToggle, children }) {
   return (
     <section className="panel">
@@ -88,6 +85,72 @@ function Section({ title, open, onToggle, children }) {
   );
 }
 
+function DecisionLogSection({ decisionLog, runSummary, open, onToggle }) {
+  return (
+    <Section title="Decision Log" open={open} onToggle={onToggle}>
+      <div className="stack">
+        <div className="summary-grid">
+          <div className="summary-card">
+            <span className="summary-label">Used Tools</span>
+            <strong>{runSummary?.used_tools ? "Yes" : "No"}</strong>
+          </div>
+          <div className="summary-card">
+            <span className="summary-label">Tool Names</span>
+            <strong>
+              {runSummary?.tool_names?.length
+                ? runSummary.tool_names.join(", ")
+                : "None"}
+            </strong>
+          </div>
+          <div className="summary-card">
+            <span className="summary-label">Total Steps</span>
+            <strong>{runSummary?.total_steps ?? 0}</strong>
+          </div>
+        </div>
+
+        <div className="decision-list">
+          {decisionLog?.map((event, index) => (
+            <article className="decision-card" key={`${event.step}-${index}`}>
+              <div className="decision-header">
+                <div>
+                  <div className="decision-eyebrow">
+                    Step {index + 1} • {event.stage}
+                  </div>
+                  <h3 className="decision-title">{event.step}</h3>
+                </div>
+                <div className={`decision-status status-${event.status}`}>
+                  {event.status}
+                </div>
+              </div>
+
+              <p className="decision-text">{event.decision}</p>
+
+              <div className="decision-meta">
+                <span>{new Date(event.timestamp).toLocaleString()}</span>
+                {event.tool_name ? <span>Tool: {event.tool_name}</span> : null}
+              </div>
+
+              {Object.keys(event.details || {}).length ? (
+                <details className="decision-details">
+                  <summary>View details</summary>
+                  <div className="decision-detail-grid">
+                    {Object.entries(event.details).map(([key, value]) => (
+                      <div className="decision-detail" key={key}>
+                        <strong>{key}</strong>
+                        <pre>{formatDecisionValue(value)}</pre>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export default function HomePage() {
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [k, setK] = useState(8);
@@ -97,12 +160,12 @@ export default function HomePage() {
   const [selectedChunkId, setSelectedChunkId] = useState(null);
   const [openSections, setOpenSections] = useState({
     image: false,
+    decisionLog: true,
     embedding: false,
     chunks: false,
     context: false,
     prompt: false,
     response: true,
-    sources: true,
   });
 
   const toggleSection = (key) => {
@@ -145,12 +208,12 @@ export default function HomePage() {
           result.image_path ??
           result.generated_image_path,
         ),
+        decisionLog: true,
         embedding: true,
         chunks: true,
         context: true,
         prompt: true,
         response: true,
-        sources: true,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -164,22 +227,17 @@ export default function HomePage() {
     data?.retrieved_chunks?.[0] ??
     null;
 
-  const groupedSources = data?.retrieved_chunks
-    ? groupChunksBySource(data.retrieved_chunks)
-    : {};
   const imageSource = getImageSource(data);
 
   return (
     <main className="page">
       <div className="container stack">
         <header className="hero">
-          <h1>Project The Jungle Book</h1>
+          <h1>Project RAGnarok</h1>
           <p>
-            Implementation of LLM, RAG, and image generation by utilizing The
-            Jungle Book from{" "}
-            <a href="https://www.gutenberg.org/ebooks/236" target="_blank">
-              Gutenberg Project
-            </a>
+            A grounded RAG demo over The Jungle Book with structured LLM
+            decision logging, tool tracing, and a frontend inspector for every
+            execution step.
           </p>
         </header>
 
@@ -226,6 +284,28 @@ export default function HomePage() {
               </div>
             </Section>
 
+            <section className="detail-card">
+              <h2 className="detail-title">Source Detail</h2>
+              {selectedChunk ? (
+                <div>
+                  <div className="badge">Chunk ID {selectedChunk.id}</div>
+                  <p className="source-meta">
+                    <strong>Source:</strong> {selectedChunk.source}
+                  </p>
+                  {selectedChunk.section_path ? (
+                    <p className="source-meta">
+                      <strong>Section:</strong> {selectedChunk.section_path}
+                    </p>
+                  ) : null}
+                  <div className="content-box">{selectedChunk.content}</div>
+                </div>
+              ) : (
+                <p className="hint">
+                  Select a citation or chunk to inspect the source.
+                </p>
+              )}
+            </section>
+
             {imageSource ? (
               <Section
                 title="Generated Image"
@@ -259,29 +339,14 @@ export default function HomePage() {
               </Section>
             ) : null}
 
-            <section className="detail-card">
-              <h2 className="detail-title">Source Detail</h2>
-              {selectedChunk ? (
-                <div>
-                  <div className="badge">Chunk ID {selectedChunk.id}</div>
-                  <p className="source-meta">
-                    <strong>Source:</strong> {selectedChunk.source}
-                  </p>
-                  {selectedChunk.section_path ? (
-                    <p className="source-meta">
-                      <strong>Section:</strong> {selectedChunk.section_path}
-                    </p>
-                  ) : null}
-                  <div className="content-box">{selectedChunk.content}</div>
-                </div>
-              ) : (
-                <p className="hint">
-                  Select a citation or chunk to inspect the source.
-                </p>
-              )}
-            </section>
+            <DecisionLogSection
+              decisionLog={data.decision_log}
+              runSummary={data.run_summary}
+              open={openSections.decisionLog}
+              onToggle={() => toggleSection("decisionLog")}
+            />
 
-            <Section
+            {/* <Section
               title="Query Embedding"
               open={openSections.embedding}
               onToggle={() => toggleSection("embedding")}
@@ -294,7 +359,7 @@ export default function HomePage() {
                   .join(", ")}{" "}
                 ...]
               </div>
-            </Section>
+            </Section> */}
 
             <Section
               title="Retrieved Chunks"

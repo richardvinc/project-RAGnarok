@@ -1,11 +1,10 @@
 {
-  "name": "rag-with-vector-ui",
+  "name": "project-ragnarok-web",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "backend": "uvicorn backend:app --reload"
+    "start": "next start"
   },
   "dependencies": {
     "next": "^15.3.1",
