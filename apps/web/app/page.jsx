@@ -6,7 +6,7 @@ const DEFAULT_QUERY = "who is mowgli's enemy in the story?";
 
 function splitResponse(text, onCitationClick) {
   const parts = [];
-  const citationRegex = /\[source:\s*([^#]+)#chunk:([0-9,\s]+)\]/g;
+  const citationRegex = /\[source:\s*([^#]+)#chunk(?:_id)?:([0-9,\s]+)\]/g;
   let lastIndex = 0;
   let match;
 
@@ -69,6 +69,16 @@ function formatDecisionValue(value) {
   }
 
   return JSON.stringify(value, null, 2);
+}
+
+function getLanguageSummary(data) {
+  if (!data) {
+    return "";
+  }
+
+  const queryLanguage = data.query_language_name ?? "English";
+  const responseLanguage = data.response_language_name ?? "English";
+  return `Query language: ${queryLanguage} | Response language: ${responseLanguage}`;
 }
 
 function Section({ title, open, onToggle, children }) {
@@ -279,8 +289,11 @@ export default function HomePage() {
               open={openSections.response}
               onToggle={() => toggleSection("response")}
             >
-              <div className="response mono-box">
-                {splitResponse(data.llm_response, setSelectedChunkId)}
+              <div className="stack" style={{ gap: 12 }}>
+                <div className="badge">{getLanguageSummary(data)}</div>
+                <div className="response mono-box">
+                  {splitResponse(data.llm_response, setSelectedChunkId)}
+                </div>
               </div>
             </Section>
 
@@ -297,7 +310,27 @@ export default function HomePage() {
                       <strong>Section:</strong> {selectedChunk.section_path}
                     </p>
                   ) : null}
-                  <div className="content-box">{selectedChunk.content}</div>
+                  <div className="stack" style={{ gap: 12 }}>
+                    <div>
+                      <p className="source-meta">
+                        <strong>Original Chunk</strong>
+                      </p>
+                      <div className="content-box">{selectedChunk.content}</div>
+                    </div>
+                    {selectedChunk.translated_content ? (
+                      <div>
+                        <p className="source-meta">
+                          <strong>
+                            Translation (
+                            {selectedChunk.translated_language_name})
+                          </strong>
+                        </p>
+                        <div className="content-box">
+                          {selectedChunk.translated_content}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <p className="hint">
@@ -383,19 +416,38 @@ export default function HomePage() {
                         </div>
                       ) : null}
                     </div>
-                    <div className="content-box">{chunk.content}</div>
+                    <div className="stack" style={{ gap: 12 }}>
+                      <div>
+                        <div className="source-meta">
+                          <strong>Original</strong>
+                        </div>
+                        <div className="content-box">{chunk.content}</div>
+                      </div>
+                      {chunk.translated_content ? (
+                        <div>
+                          <div className="source-meta">
+                            <strong>
+                              Translation ({chunk.translated_language_name})
+                            </strong>
+                          </div>
+                          <div className="content-box">
+                            {chunk.translated_content}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </article>
                 ))}
               </div>
             </Section>
 
-            <Section
+            {/* <Section
               title="Formatted Context"
               open={openSections.context}
               onToggle={() => toggleSection("context")}
             >
               <div className="mono-box">{data.formatted_context}</div>
-            </Section>
+            </Section> */}
 
             <Section
               title="Final Prompt"

@@ -35,6 +35,10 @@ class RunSummary(BaseModel):
 
 class RAGResponse(BaseModel):
     query: str
+    query_language_code: str
+    query_language_name: str
+    response_language_code: str
+    response_language_name: str
     query_embedding: list[float]
     retrieved_chunks: list[ChunkResult]
     formatted_context: str
