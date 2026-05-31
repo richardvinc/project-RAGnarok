@@ -70,3 +70,12 @@ python run_dev.py
 ## Caveats
 
 This readme is supposed to only served to be my documentation on how it setup on my development environment. Your experience may vary.
+
+## Example Result
+
+I provide several example result in this repository as PDF screenshots. You can find all in the `result_example` folder:
+
+- [Image generation using simple query in English](./result_example/image%20generation%20english.pdf)
+- [Image generation using simple query in Indonesian](./result_example/image%20generation%20indonesian.pdf)
+- [Simple query using Japanese language](./result_example/japanese.pdf)
+- [Simple query using Indonesian language](./result_example/translate%20to%20indonesian.pdf)
