@@ -18,10 +18,9 @@ ROOT_DIR = Path(__file__).resolve().parent
 API_ENTRYPOINT = ROOT_DIR / "apps" / "api" / "main.py"
 WEB_DIR = ROOT_DIR / "apps" / "web"
 WEB_PACKAGE = WEB_DIR / "package.json"
-ENV_FILE = ROOT_DIR / ".env"
 LOCK_FILE = ROOT_DIR / ".run_dev.lock"
 
-load_dotenv(ENV_FILE)
+load_dotenv(override=True)
 
 
 def print_status(message: str) -> None:

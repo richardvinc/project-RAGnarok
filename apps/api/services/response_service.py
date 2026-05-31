@@ -17,6 +17,7 @@ from .retrieval_service import retrieve_chunks
 CITATION_RE = re.compile(r"\[source:\s*[^#]+#chunk:([0-9,\s]+)\]")
 RAW_CITATION_ITEM_RE = re.compile(r"source:\s*([^#\]]+?)#chunk(?:_id)?:\s*([0-9]+)", re.IGNORECASE)
 RAW_CHUNK_ID_RE = re.compile(r"chunk_id\s*=\s*([0-9]+)", re.IGNORECASE)
+RAW_SOURCE_ONLY_RE = re.compile(r"source:\s*([^\]]+?)\s*$", re.IGNORECASE)
 
 POST_TOOL_SYSTEM_PROMPT = """You have tool results available.
 
@@ -63,6 +64,7 @@ Rules:
 - Do not use outside knowledge.
 - Respond entirely in {response_language_name}.
 - Cite sources in this exact format: `[source: {{source}}#chunk:{{chunk_id}}]`
+- Keep citation markers in ASCII exactly as written above, even when the answer language is not English.
 - If the user asks to visualize, illustrate, or generate an image, you may call the available image tool.
 """
 
@@ -155,6 +157,16 @@ def _normalize_response_citations(
         chunk.id: _display_source_name(chunk.source)
         for chunk in retrieved_chunks
     }
+    source_chunk_map: dict[str, list[str]] = {}
+    source_name_lookup: dict[str, str] = {}
+    for chunk in retrieved_chunks:
+        source_name = _display_source_name(chunk.source)
+        source_key = source_name.casefold()
+        source_name_lookup[source_key] = source_name
+        source_chunk_map.setdefault(source_key, [])
+        chunk_id = str(chunk.id)
+        if chunk_id not in source_chunk_map[source_key]:
+            source_chunk_map[source_key].append(chunk_id)
 
     def replace_bracket(match: re.Match[str]) -> str:
         bracket_text = match.group(0)
@@ -170,7 +182,17 @@ def _normalize_response_citations(
 
         raw_chunk_ids = RAW_CHUNK_ID_RE.findall(bracket_text)
         if not raw_chunk_ids:
-            return bracket_text.replace("#chunk_id:", "#chunk:")
+            source_only_match = RAW_SOURCE_ONLY_RE.search(bracket_text[1:-1].strip())
+            if not source_only_match:
+                return bracket_text.replace("#chunk_id:", "#chunk:")
+
+            source_key = source_only_match.group(1).strip().casefold()
+            chunk_ids = source_chunk_map.get(source_key)
+            source_name = source_name_lookup.get(source_key)
+            if not chunk_ids or not source_name:
+                return bracket_text.replace("#chunk_id:", "#chunk:")
+
+            return f"[source: {source_name}#chunk:{', '.join(chunk_ids)}]"
 
         grouped_ids: dict[str, list[str]] = {}
         for chunk_id in raw_chunk_ids:
@@ -412,7 +434,7 @@ def build_retrieval_query(
     return retrieval_query
 
 
-def generate_grounded_response(
+def try_to_generate_image(
     query: str,
     retrieved_chunks: list[RetrievedChunk],
     logger: DecisionLogger,
@@ -449,7 +471,7 @@ def generate_grounded_response(
     ]
     logger.log(
         step="llm_first_response",
-        stage="generation",
+        stage="image generation",
         status="completed",
         decision="Received the initial LLM response.",
         details={
@@ -480,7 +502,7 @@ def generate_grounded_response(
         final_message = final_response.choices[0].message.content or ""
         logger.log(
             step="llm_final_response",
-            stage="generation",
+            stage="image generation",
             status="completed",
             decision="Generated the final answer after tool execution.",
             details={
@@ -502,7 +524,7 @@ def generate_grounded_response(
     llm_response = first_message.content or ""
     logger.log(
         step="llm_final_response",
-        stage="generation",
+        stage="image generation",
         status="completed",
         decision="Returned the direct LLM answer.",
         details={
@@ -514,7 +536,7 @@ def generate_grounded_response(
     return _normalize_response_citations(llm_response, retrieved_chunks), formatted_context, final_prompt, None
 
 
-def translate_cited_chunks(
+def try_to_translate_cited_chunks(
     retrieved_chunks: list[RetrievedChunk],
     *,
     cited_chunk_ids: list[int],
@@ -626,7 +648,7 @@ def run_rag_pipeline(query: str, *, k: int) -> RAGResponse:
 
     query_embedding, retrieved_chunks = retrieve_chunks(retrieval_query, k=k)
 
-    llm_response, formatted_context, final_prompt, image_url = generate_grounded_response(
+    llm_response, formatted_context, final_prompt, image_url = try_to_generate_image(
         query,
         retrieved_chunks,
         logger,
@@ -636,7 +658,7 @@ def run_rag_pipeline(query: str, *, k: int) -> RAGResponse:
     )
 
     cited_chunk_ids = _extract_cited_chunk_ids(llm_response)
-    translated_chunks = translate_cited_chunks(
+    translated_chunks = try_to_translate_cited_chunks(
         retrieved_chunks,
         cited_chunk_ids=cited_chunk_ids,
         target_language_code=response_language_code,

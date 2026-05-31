@@ -245,9 +245,8 @@ export default function HomePage() {
         <header className="hero">
           <h1>Project RAGnarok</h1>
           <p>
-            A grounded RAG demo over The Jungle Book with structured LLM
-            decision logging, tool tracing, and a frontend inspector for every
-            execution step.
+            A simple, no-framework, LLM+RAG app with The Jungle Book data to
+            demonstrate tool handling and local LLM development.
           </p>
         </header>
 
